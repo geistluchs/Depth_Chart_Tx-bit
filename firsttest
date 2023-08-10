@@ -1,0 +1,52 @@
+import requests
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+from matplotlib.ticker import MaxNLocator
+
+# Parameters
+min_price = 0.05
+max_price = 0.5
+
+# Step 1: Make a REST request to the TXbit public API
+url = "https://api.txbit.io/api/public/getorderbook?market=ETI/USDT&type=both"
+response = requests.get(url)
+data = response.json()
+
+if data["success"]:
+    buy_orders = data["result"]["buy"]
+    sell_orders = data["result"]["sell"]
+else:
+    print("API request failed.")
+    exit()
+
+# Step 2: Process the data using pandas
+buy_df = pd.DataFrame(buy_orders, columns=["Quantity", "Rate"])
+sell_df = pd.DataFrame(sell_orders, columns=["Quantity", "Rate"])
+
+# Filter out orders with prices outside the specified range
+buy_df = buy_df[(buy_df["Rate"] >= min_price) & (buy_df["Rate"] <= max_price)]
+sell_df = sell_df[(sell_df["Rate"] >= min_price) & (sell_df["Rate"] <= max_price)]
+
+# Calculate the complementary ECDF for bids
+buy_df["Complementary Quantity"] = buy_df["Quantity"][::-1].cumsum()[::-1]
+
+# Add a "side" column to distinguish between buy and sell orders
+buy_df["side"] = "Buy"
+sell_df["side"] = "Sell"
+
+# Step 3: Create a Weighted empirical CDF (ECDF) plot
+fig, ax = plt.subplots()
+
+sns.ecdfplot(x="Rate", weights="Complementary Quantity", stat="count", complementary=True, data=buy_df, ax=ax)
+sns.ecdfplot(x="Rate", weights="Quantity", stat="count", data=sell_df, ax=ax)
+sns.scatterplot(x="Rate", y="Quantity", hue="side", data=pd.concat([buy_df, sell_df]), ax=ax)
+
+ax.set_title("Depth Chart")
+ax.set_xlabel("Price per ETI")
+ax.set_ylabel("Quantity of ETI")
+
+# Customize the number of ticks on the price axis
+ax.xaxis.set_major_locator(MaxNLocator(nbins=15))  # Adjust the number of bins as needed
+
+plt.show()
